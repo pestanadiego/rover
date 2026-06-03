@@ -5,9 +5,3 @@ normalized_dir: data/normalized
 database:
   filename: products.sqlite
   path:
-
-# VPS example:
-# raw_dir: /opt/winning_product/shared/data/raw
-# normalized_dir: /opt/winning_product/shared/data/normalized
-# database:
-#   path: /opt/winning_product/shared/data/normalized/products.sqlite

@@ -1,6 +1,7 @@
 import importlib
 import json
 import os
+import sys
 import sqlite3
 import tempfile
 from dataclasses import dataclass
@@ -332,7 +333,7 @@ def clean_env(name: str) -> str:
 
 
 def print_results(results: list[CheckResult]) -> None:
-    print("Winning Product doctor")
+    print("Rover Doctor")
     print(f"Project root: {PROJECT_ROOT}")
     print("")
 
