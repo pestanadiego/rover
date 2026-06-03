@@ -1,0 +1,186 @@
+columns:
+  - raw: Product Name
+    field: product.name
+    type: string
+  - raw: ASIN
+    field: product.asin
+    type: asin
+  - raw: Amazon URL
+    field: product.amazon_url
+    type: string
+  - raw: Image URL
+    field: product.image_url
+    type: string
+  - raw: Category
+    field: product.category
+    type: string
+  - raw: Brand
+    field: product.brand
+    type: string
+  - raw: Manufacturer
+    field: product.manufacturer
+    type: string
+  - raw: UPC Barcode
+    field: product.upc
+    type: string
+  - raw: EAN Barcode
+    field: product.ean
+    type: string
+  - raw: Weight (grams)
+    field: product.weight_grams
+    type: integer
+
+  - raw: Quantity
+    field: source.quantity
+    type: integer
+  - raw: Scrape Keyword
+    field: source.scrape_keyword
+    type: string
+  - raw: Search Term
+    field: source.selleramp_search_term
+    type: string
+
+  - raw: Sales Marketplace
+    field: marketplace.sales_marketplace
+    type: string
+  - raw: Sales Currency Code
+    field: marketplace.sales_currency
+    type: string
+  - raw: Home Marketplace
+    field: marketplace.home_marketplace
+    type: string
+  - raw: Home Currency Code
+    field: marketplace.home_currency
+    type: string
+
+  - raw: Cost Price
+    field: pricing.cost_price
+    type: decimal
+  - raw: Sale Price
+    field: pricing.sale_price
+    type: decimal
+  - raw: Buy Box (Current)
+    field: pricing.buy_box_current
+    type: decimal
+  - raw: Buy Box (Average Last 180 Days)
+    field: pricing.buy_box_average_180d
+    type: decimal
+  - raw: Breakeven
+    field: pricing.breakeven
+    type: decimal
+  - raw: Max Cost
+    field: pricing.max_cost
+    type: decimal
+  - raw: Sale Price (30% ROI)
+    field: pricing.sale_price_for_30_roi
+    type: decimal
+
+  - raw: FBA Fee
+    field: fees.fba_fee
+    type: decimal
+  - raw: Referral Fee
+    field: fees.referral_fee
+    type: decimal
+  - raw: FBM Fulfilment Cost
+    field: fees.fbm_fulfilment_cost
+    type: decimal
+  - raw: VAT
+    field: fees.vat
+    type: decimal
+  - raw: Total Fees
+    field: fees.total_fees
+    type: decimal
+
+  - raw: Profit
+    field: profitability.profit
+    type: decimal
+  - raw: R.O.I.
+    field: profitability.roi_percent
+    type: percent
+  - raw: Profit Margin (0.xx%)
+    field: profitability.profit_margin_percent
+    type: percent
+
+  - raw: Sales Rank (Current)
+    field: market.sales_rank_current
+    type: integer
+  - raw: Estimated Sales
+    field: market.estimated_sales
+    type: integer
+  - raw: FBA Seller Count
+    field: market.fba_seller_count
+    type: integer
+  - raw: FBM Seller Count
+    field: market.fbm_seller_count
+    type: integer
+  - raw: FBA + FBM Seller Count
+    field: market.total_seller_count
+    type: integer
+
+combined_columns:
+  - field: source.exported_at_utc
+    type: datetime_utc
+    raw: Export Date (UTC yyyy-mm-dd) + Export Time (UTC)
+    date_raw: Export Date (UTC yyyy-mm-dd)
+    time_raw: Export Time (UTC)
+
+validation:
+  required_fields:
+    - product.asin
+    - pricing.cost_price
+    - pricing.sale_price
+    - market.sales_rank_current
+    - market.fba_seller_count
+    - market.fbm_seller_count
+
+  non_negative_fields:
+    - pricing.cost_price
+    - pricing.sale_price
+    - pricing.buy_box_current
+    - pricing.buy_box_average_180d
+    - pricing.breakeven
+    - pricing.max_cost
+    - fees.fba_fee
+    - fees.referral_fee
+    - fees.fbm_fulfilment_cost
+    - fees.vat
+    - fees.total_fees
+    - market.estimated_sales
+    - market.fba_seller_count
+    - market.fbm_seller_count
+    - market.total_seller_count
+
+  positive_fields:
+    - pricing.sale_price
+    - market.sales_rank_current
+
+  alert_columns:
+    - Alert
+    - Alerts
+    - IP Alert
+    - IP Alerts
+    - IP Complaints
+    - Hazmat
+    - Restrictions
+    - Restricted
+    - Gated
+
+  safe_alert_values:
+    - ""
+    - "0"
+    - "false"
+    - "n"
+    - "n/a"
+    - "na"
+    - "no"
+    - "none"
+    - "not found"
+    - "unknown"
+
+  blocking_alert_words:
+    - complaint
+    - gated
+    - hazmat
+    - ip
+    - restricted
+    - restriction

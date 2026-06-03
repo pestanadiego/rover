@@ -1,0 +1,18 @@
+enabled: true
+required: false
+
+database:
+  path:
+
+report:
+  max_products: 25
+  agent_note_max_chars: 240
+  agent_name: Rover
+  recipient_name: there
+  subject_prefix: SellerAmp
+  display_timezone: America/New_York
+
+delivery:
+  smtp_port: 587
+  smtp_use_tls: true
+  smtp_use_ssl: false

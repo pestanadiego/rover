@@ -1,0 +1,38 @@
+browser:
+  mode: debug
+  debug_address: "127.0.0.1:9222"
+  user_data_dir: secrets/chrome-profile
+  window_size: "1440,1200"
+  element_wait_timeout_seconds: 12
+  start_url: ""
+
+auth:
+  post_login_wait_seconds: 8
+
+scrape:
+  target_winners_per_keyword: 5
+  global_winner_limit: 20
+  max_pages_to_scrape: 10
+  start_page: 4
+
+filters:
+  skip_amazon: true
+  min_sales_per_month: 300
+  min_sellers: 3
+  min_cost: 3.0
+
+retries:
+  no_results_max_retries: 3
+  no_results_cooldown_seconds: 180
+
+timing:
+  search_results_wait_seconds: 3
+  sidebar_wait_seconds: 4
+  iframe_inner_wait_seconds: 2
+  next_page_wait_seconds: 3
+  keyword_pause_seconds: 3
+  sheet_row_wait_seconds: 10
+
+artifacts:
+  enabled: true
+  directory: scraping_errors

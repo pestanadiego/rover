@@ -1,0 +1,55 @@
+target_keyword_count: 3
+
+selection_mix:
+  manual: 0.10
+  active_proven: 0.25
+  winner_mutation: 0.30
+  new_generated: 0.25
+  cooldown_retry: 0.10
+
+cooldowns:
+  short_days: 2
+  medium_days: 7
+  long_days: 30
+  no_results_days: 2
+  error_days: 7
+  stale_days: 30
+
+retire_after_zero_winner_runs: 5
+
+diversity:
+  max_share_per_origin: 0.35
+  max_share_per_cluster: 0.25
+  max_per_parent_keyword: 2
+
+default_cluster: dummy
+
+banned_terms:
+  - cbd
+  - cream
+  - ointment
+  - medicine
+  - baby formula
+  - disney
+  - lego
+  - pokemon
+  - apple
+  - nike
+
+generation:
+  llm_expansion:
+    enabled: false
+    keywords_per_source: 30
+    max_source_keywords: 5
+    max_winning_titles: 20
+    max_bad_keywords: 30
+
+  embedding_neighbor:
+    enabled: false
+    model_name: sentence-transformers/all-MiniLM-L6-v2
+    top_k_neighbors: 5
+    min_similarity: 0.55
+    max_similarity_for_duplicate: 0.95
+    max_source_keywords: 25
+    max_candidate_keywords: 500
+    include_previous_candidates: true

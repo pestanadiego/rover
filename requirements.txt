@@ -1,0 +1,10 @@
+certifi==2026.5.20
+google-auth==2.53.0
+mcp==1.27.1
+numpy==2.4.6
+pydantic-ai-slim[openrouter,mcp,duckduckgo,web-fetch]==1.104.0
+python-dotenv==1.2.1
+PyYAML==6.0.3
+requests==2.34.2
+selenium==4.44.0
+sentence-transformers==5.5.1

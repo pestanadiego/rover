@@ -1,0 +1,38 @@
+enabled: true
+required: true
+agent_name: Rover
+model: deepseek/deepseek-v4-flash
+shared_system_prompt: |
+  Write directly and plainly. Avoid marketing language, emojis, Markdown headings,
+  em dashes, and invented certainty.
+
+max_products_per_run: 25
+continue_on_product_error: true
+write_manual_review_on_error: true
+
+web_search:
+  enabled: true
+  search_context_size: medium
+  search_timeout_seconds: 45
+  fetch_timeout_seconds: 45
+  max_searches_per_product: 3
+  max_fetches_per_product: 3
+
+tools:
+  parallel_tool_calls: false
+
+mcp:
+  enabled: true
+  timeout_seconds: 30
+
+provider:
+  retry_count: 2
+  retry_backoff_seconds: 5
+  fallback_model: deepseek/deepseek-v4-pro
+  summary_model: deepseek/deepseek-v4-flash
+
+review:
+  max_note_chars: 1000
+  product_review_timeout_seconds: 420
+  summary_timeout_seconds: 120
+  breakdown_timeout_seconds: 240
