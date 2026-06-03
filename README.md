@@ -1,9 +1,9 @@
 <p align="center">
-  <img src="docs/rover-logo.png" alt="Rover" width="200">
+  <img src="docs/rover-logo.png" alt="Rover" width="400">
 </p>
 
 <p align="center">
-  <strong>An autonomous agent that finds, reviews, and reports Amazon arbitrage product candidates.</strong>
+  <strong>An autonomous agent that finds, reviews, and reports Amazon arbitrage products.</strong>
 </p>
 
 ---
