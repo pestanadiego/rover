@@ -142,6 +142,10 @@ Rover is designed to survive unattended operation:
 - **Failure alerts**. Failures trigger an email alert with the tail of the latest log.
 - **Structured logs**. Each run writes a human-readable `pipeline_<timestamp>.log`.
 
+## 👀 See Also
+
+- [`docs/vps-deployment.md`](docs/vps-deployment.md): How to run Rover unattended on a VPS.
+
 ## ⚖️ License
 
 MIT
