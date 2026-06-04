@@ -4,7 +4,7 @@ browser:
   user_data_dir: secrets/chrome-profile
   window_size: "1440,1200"
   element_wait_timeout_seconds: 12
-  start_url: ""
+  start_url: "https://sas.selleramp.com/"
 
 auth:
   post_login_wait_seconds: 8
