@@ -766,7 +766,12 @@ def build_mcp_toolsets(config: RoverAgentConfig) -> list[Any]:
 
     env = os.environ.copy()
     env["PRODUCT_DB_PATH"] = str(config.db_path)
-    env["PYTHONPATH"] = f"{MCP_DIR}{os.pathsep}{env.get('PYTHONPATH', '')}".rstrip(os.pathsep)
+
+    pythonpath_entries = [str(MCP_DIR), str(PROJECT_ROOT)]
+    if env.get("PYTHONPATH"):
+        pythonpath_entries.append(env["PYTHONPATH"])
+
+    env["PYTHONPATH"] = os.pathsep.join(pythonpath_entries)
 
     transport = StdioTransport(
         command=sys.executable,
