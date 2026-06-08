@@ -23,6 +23,25 @@ from rover.pipeline_logging import configure_pipeline_logging, log_event
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DOTENV_PATH = PROJECT_ROOT / ".env"
 ASIN_RE = re.compile(r"\bB[A-Z0-9]{9}\b")
+SELLERAMP_LOOKUP_URL = "https://sas.selleramp.com/r/sas/lookup"
+AMAZON_HOME_URL = "https://www.amazon.com/"
+SEARCH_BOX_SELECTORS = (
+    "input#saslookup-search_term",
+    "input#search_term",
+    "input[name='search_term']",
+    "input[type='search'][placeholder='Search Products']",
+)
+PRODUCT_ROW_SELECTOR = "div.relative.flex.flex-col.align-middle.border-l.border-panel-border"
+EXPORT_BUTTON_SELECTOR = "#google-export-header button.btn-sheet-export2"
+NEXT_PAGE_BUTTON_SELECTOR = "button[aria-label='Go to next page']"
+NO_RESULTS_XPATH = "//p[contains(text(), 'No results were found')]"
+TEMPORARY_SEARCH_ERROR_XPATH = (
+    "//*[self::p or self::div or self::span]"
+    "[contains(translate(normalize-space(.), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), "
+    "\"couldn't complete your search\") and "
+    "contains(translate(normalize-space(.), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), "
+    "'amazon.com')]"
+)
 LOGIN_EMAIL_SELECTORS = (
     "#login-form input#loginform-email",
     "#login-form input[name='LoginForm[email]']",
@@ -157,16 +176,24 @@ def selleramp_loop_result(
     return winners_found, maxed_out, sheet_rows_updated, error_message
 
 
-def wait_for_search_result_state(driver, product_row_selector, no_results_xpath, timeout_seconds):
+def wait_for_search_result_state(driver, timeout_seconds):
     try:
-        WebDriverWait(driver, timeout_seconds).until(
-            lambda current_driver: (
-                len(current_driver.find_elements(By.CSS_SELECTOR, product_row_selector)) > 0
-                or len(current_driver.find_elements(By.XPATH, no_results_xpath)) > 0
-            )
-        )
+        return WebDriverWait(driver, timeout_seconds).until(current_search_result_state)
     except TimeoutException:
-        return
+        return "timeout"
+
+
+def current_search_result_state(driver):
+    if elements_found(driver, By.CSS_SELECTOR, PRODUCT_ROW_SELECTOR):
+        return "results"
+
+    if element_exists(driver, By.XPATH, NO_RESULTS_XPATH):
+        return "no_results"
+
+    if element_exists(driver, By.XPATH, TEMPORARY_SEARCH_ERROR_XPATH):
+        return "temporary_search_error"
+
+    return False
 
 
 def wait_for_sheet_row_count_to_increase(sheet_updater, previous_count, timeout_seconds):
@@ -181,8 +208,7 @@ def wait_for_sheet_row_count_to_increase(sheet_updater, previous_count, timeout_
 
 
 def ensure_selleramp_ready(driver, wait, scraper_config):
-    search_box_selector = "input#saslookup-search_term"
-    if element_exists(driver, By.CSS_SELECTOR, search_box_selector):
+    if search_input_visible(driver):
         return
 
     if not login_form_present(driver):
@@ -191,7 +217,82 @@ def ensure_selleramp_ready(driver, wait, scraper_config):
         )
 
     perform_selleramp_login(driver, wait, scraper_config)
-    wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, search_box_selector)))
+    wait_for_search_input(driver, wait)
+
+
+def prepare_selleramp_search_page(driver, wait, scraper_config, keyword, reason):
+    log_event(
+        "scraper_selleramp_reset_started",
+        stage="Scrape keywords",
+        keyword=keyword,
+        reason=reason,
+        current_url=safe_driver_url(driver),
+        title=safe_driver_title(driver),
+    )
+    switch_to_selleramp_tab_or_open_lookup(driver)
+    switch_to_default_content(driver)
+    driver.get(SELLERAMP_LOOKUP_URL)
+    wait_for_document_ready(driver, scraper_config.browser.element_wait_timeout_seconds)
+    ensure_selleramp_ready(driver, wait, scraper_config)
+    search_input = wait_for_search_input(driver, wait)
+    log_event(
+        "scraper_selleramp_reset_completed",
+        stage="Scrape keywords",
+        keyword=keyword,
+        reason=reason,
+        current_url=safe_driver_url(driver),
+        title=safe_driver_title(driver),
+    )
+    return search_input
+
+
+def switch_to_selleramp_tab_or_open_lookup(driver):
+    try:
+        switch_to_selleramp_tab(driver)
+        return
+    except RuntimeError:
+        driver.execute_script("window.open(arguments[0], '_blank');", SELLERAMP_LOOKUP_URL)
+        driver.switch_to.window(driver.window_handles[-1])
+
+
+def switch_to_default_content(driver):
+    try:
+        driver.switch_to.default_content()
+    except Exception:
+        return
+
+
+def wait_for_document_ready(driver, timeout_seconds):
+    try:
+        WebDriverWait(driver, timeout_seconds).until(
+            lambda current_driver: current_driver.execute_script(
+                "return document.readyState"
+            )
+            in ("interactive", "complete")
+        )
+    except TimeoutException:
+        return
+
+
+def search_input_visible(driver):
+    return first_visible_element(driver, By.CSS_SELECTOR, SEARCH_BOX_SELECTORS) is not None
+
+
+def wait_for_search_input(driver, wait):
+    return wait.until(
+        lambda current_driver: first_enabled_element(
+            current_driver,
+            By.CSS_SELECTOR,
+            SEARCH_BOX_SELECTORS,
+        )
+    )
+
+
+def is_search_input_usable(element):
+    try:
+        return element is not None and element.is_displayed() and element.is_enabled()
+    except Exception:
+        return False
 
 
 def login_form_present(driver):
@@ -251,6 +352,30 @@ def first_visible_element(driver, by, selectors):
                 continue
 
     return None
+
+
+def first_enabled_element(driver, by, selectors):
+    for selector in selectors:
+        try:
+            elements = driver.find_elements(by, selector)
+        except Exception:
+            continue
+
+        for element in elements:
+            try:
+                if element.is_displayed() and element.is_enabled():
+                    return element
+            except Exception:
+                continue
+
+    return None
+
+
+def elements_found(driver, by, selector):
+    try:
+        return len(driver.find_elements(by, selector)) > 0
+    except Exception:
+        return False
 
 
 def element_exists(driver, by, selector):
@@ -317,6 +442,71 @@ def safe_driver_url(driver):
     except Exception:
         return ""
 
+
+def recover_temporary_search_error(driver, wait, scraper_config, keyword, attempt):
+    print("     [!] SellerAmp reported a temporary Amazon search issue. Recovering...")
+    log_event(
+        "scraper_temporary_search_error_recovery_started",
+        stage="Scrape keywords",
+        level="WARNING",
+        keyword=keyword,
+        attempt=attempt,
+        current_url=safe_driver_url(driver),
+    )
+    original_handle = safe_window_handle(driver)
+    handles_before = list(driver.window_handles)
+
+    driver.execute_script("window.open(arguments[0], '_blank');", AMAZON_HOME_URL)
+    amazon_handle = newest_window_handle(driver, handles_before)
+    if not amazon_handle:
+        raise RuntimeError("Could not open Amazon recovery tab.")
+
+    driver.switch_to.window(amazon_handle)
+    wait_for_document_ready(driver, scraper_config.browser.element_wait_timeout_seconds)
+    time.sleep(2)
+    if len(driver.window_handles) > 1:
+        driver.close()
+
+    switch_back_to_selleramp(driver, original_handle)
+    search_input = prepare_selleramp_search_page(
+        driver,
+        wait,
+        scraper_config,
+        keyword,
+        reason="temporary_search_error",
+    )
+    log_event(
+        "scraper_temporary_search_error_recovery_completed",
+        stage="Scrape keywords",
+        keyword=keyword,
+        attempt=attempt,
+        current_url=safe_driver_url(driver),
+    )
+    return search_input
+
+
+def safe_window_handle(driver):
+    try:
+        return driver.current_window_handle
+    except Exception:
+        return None
+
+
+def newest_window_handle(driver, handles_before):
+    current_handles = list(driver.window_handles)
+    new_handles = [handle for handle in current_handles if handle not in handles_before]
+    if new_handles:
+        return new_handles[-1]
+    return None
+
+
+def switch_back_to_selleramp(driver, preferred_handle):
+    if preferred_handle in list(driver.window_handles):
+        driver.switch_to.window(preferred_handle)
+        return
+
+    switch_to_selleramp_tab(driver)
+
 def run_selleramp_export_loop(
     keyword,
     is_first_keyword=False,
@@ -365,9 +555,13 @@ def run_selleramp_export_loop(
             title=safe_driver_title(driver),
             url=safe_driver_url(driver),
         )
-        switch_to_selleramp_tab(driver)
-
-        ensure_selleramp_ready(driver, wait, scraper_config)
+        search_input = prepare_selleramp_search_page(
+            driver,
+            wait,
+            scraper_config,
+            keyword,
+            reason="keyword_start",
+        )
         log_event(
             "scraper_selleramp_ready",
             stage="Scrape keywords",
@@ -384,27 +578,10 @@ def run_selleramp_export_loop(
         min_sellers = scraper_config.filters.min_sellers
         min_cost = scraper_config.filters.min_cost
 
-        LOGO_BTN = "img[alt='SellerAmp']"
-        SEARCH_BOX = "input#saslookup-search_term"
-        PRODUCT_ROW = "div.relative.flex.flex-col.align-middle.border-l.border-panel-border" 
-        EXPORT_BTN = "#google-export-header button.btn-sheet-export2"
-        NEXT_PAGE_BTN = "button[aria-label='Go to next page']"
-        NO_RESULTS_MSG = "//p[contains(text(), 'No results were found')]"
-        
         AMZ_BADGE = "div.amz" 
         OFFERS_BOX = ".//p[contains(text(), 'Offers:')]" 
         EST_SALES_BOX = ".//p[contains(text(), 'Est. Sales')]/following-sibling::div"
         MAX_COST_BOX = ".//p[contains(text(), 'Max Cost')]/following-sibling::div"
-
-        # go to homepage
-        if not is_first_keyword:
-            print("\nStep 0: Resetting to homepage for clean search state...")
-            try:
-                logo = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, LOGO_BTN)))
-                driver.execute_script("arguments[0].click();", logo)
-                time.sleep(2)
-            except Exception as e:
-                print(f"     [!] Could not click logo. Proceeding anyway.")
 
         # execute search
         retries = 0
@@ -419,21 +596,29 @@ def run_selleramp_export_loop(
                 attempt=retries + 1,
                 max_retries=scraper_config.retries.no_results_max_retries,
             )
-            search_input = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, SEARCH_BOX)))
+            if not is_search_input_usable(search_input):
+                search_input = wait_for_search_input(driver, wait)
+
             search_input.clear()
             search_input.send_keys(keyword)
             search_input.send_keys(Keys.RETURN)
             print("Search executed. Waiting for results...")
-            wait_for_search_result_state(
+            search_state = wait_for_search_result_state(
                 driver,
-                PRODUCT_ROW,
-                NO_RESULTS_MSG,
                 scraper_config.timing.search_results_wait_seconds,
             )
 
-            # check for no results
-            no_results_elements = driver.find_elements(By.XPATH, NO_RESULTS_MSG)
-            if len(no_results_elements) > 0:
+            if search_state == "results":
+                search_successful = True
+                log_event(
+                    "scraper_search_results_ready",
+                    stage="Scrape keywords",
+                    keyword=keyword,
+                    attempt=retries + 1,
+                )
+                break
+
+            if search_state == "no_results":
                 if retries < scraper_config.retries.no_results_max_retries:
                     cooldown = scraper_config.retries.no_results_cooldown_seconds
                     print(f"     [!] No results found. Initiating {cooldown}-second cooldown before retry...")
@@ -446,42 +631,81 @@ def run_selleramp_export_loop(
                         cooldown_seconds=cooldown,
                     )
                     time.sleep(cooldown)
-                    
-                    try:
-                        logo = driver.find_element(By.CSS_SELECTOR, LOGO_BTN)
-                        driver.execute_script("arguments[0].click();", logo)
-                        time.sleep(2)
-                    except: pass
-                    
+                    search_input = prepare_selleramp_search_page(
+                        driver,
+                        wait,
+                        scraper_config,
+                        keyword,
+                        reason="no_results_retry",
+                    )
                     retries += 1
-                else:
-                    print(f"     [!] Max retries reached for '{keyword}'. Moving on.")
-                    maxed_out = True
+                    continue
+
+                print(f"     [!] Max retries reached for '{keyword}'. Moving on.")
+                maxed_out = True
+                log_event(
+                    "scraper_search_max_retries",
+                    stage="Scrape keywords",
+                    level="WARNING",
+                    keyword=keyword,
+                    attempts=retries + 1,
+                    search_state=search_state,
+                )
+                return selleramp_loop_result(
+                    winners_found,
+                    maxed_out,
+                    sheet_rows_updated,
+                    None,
+                    duplicate_asins_skipped,
+                    return_summary,
+                    products_seen=products_seen,
+                )
+
+            if search_state == "temporary_search_error":
+                if retries < scraper_config.retries.no_results_max_retries:
+                    search_input = recover_temporary_search_error(
+                        driver,
+                        wait,
+                        scraper_config,
+                        keyword,
+                        attempt=retries + 1,
+                    )
+                    retries += 1
+                    continue
+
+                raise RuntimeError(
+                    "SellerAmp temporary search error did not recover "
+                    f"after {retries + 1} attempt(s) for keyword '{keyword}'."
+                )
+
+            if search_state == "timeout":
+                if retries < scraper_config.retries.no_results_max_retries:
                     log_event(
-                        "scraper_search_max_retries",
+                        "scraper_search_state_timeout_retry",
                         stage="Scrape keywords",
                         level="WARNING",
                         keyword=keyword,
-                        attempts=retries + 1,
+                        attempt=retries + 1,
+                        timeout_seconds=scraper_config.timing.search_results_wait_seconds,
+                        current_url=safe_driver_url(driver),
                     )
-                    return selleramp_loop_result(
-                        winners_found,
-                        maxed_out,
-                        sheet_rows_updated,
-                        None,
-                        duplicate_asins_skipped,
-                        return_summary,
-                        products_seen=products_seen,
+                    search_input = prepare_selleramp_search_page(
+                        driver,
+                        wait,
+                        scraper_config,
+                        keyword,
+                        reason="search_state_timeout",
                     )
-            else:
-                search_successful = True
-                log_event(
-                    "scraper_search_results_ready",
-                    stage="Scrape keywords",
-                    keyword=keyword,
-                    attempt=retries + 1,
+                    retries += 1
+                    continue
+
+                raise RuntimeError(
+                    "SellerAmp search timed out waiting for products, no-results, "
+                    "or temporary-error state "
+                    f"after {retries + 1} attempt(s) for keyword '{keyword}'."
                 )
-                break
+
+            raise RuntimeError(f"Unexpected SellerAmp search state: {search_state!r}")
 
         if not search_successful:
             return selleramp_loop_result(
@@ -499,7 +723,7 @@ def run_selleramp_export_loop(
             print(f"\nStep 2: Fast-forwarding to Page {start_page}...")
             while current_page < start_page:
                 try:
-                    next_button = driver.find_element(By.CSS_SELECTOR, NEXT_PAGE_BTN)
+                    next_button = driver.find_element(By.CSS_SELECTOR, NEXT_PAGE_BUTTON_SELECTOR)
                     if next_button.get_attribute("aria-disabled") == "true" or next_button.get_attribute("disabled"):
                         print(f"Reached the last page while skipping. Starting on Page {current_page}.")
                         break
@@ -532,9 +756,9 @@ def run_selleramp_export_loop(
             )
             
             print("Waiting for product rows to render...")
-            wait.until(EC.presence_of_all_elements_located((By.CSS_SELECTOR, PRODUCT_ROW)))
+            wait.until(EC.presence_of_all_elements_located((By.CSS_SELECTOR, PRODUCT_ROW_SELECTOR)))
             
-            product_count = len(driver.find_elements(By.CSS_SELECTOR, PRODUCT_ROW))
+            product_count = len(driver.find_elements(By.CSS_SELECTOR, PRODUCT_ROW_SELECTOR))
             products_seen += product_count
             print(f"Found {product_count} products on this page.")
             log_event(
@@ -563,7 +787,7 @@ def run_selleramp_export_loop(
                     product_count=product_count,
                 )
                 
-                products = driver.find_elements(By.CSS_SELECTOR, PRODUCT_ROW)
+                products = driver.find_elements(By.CSS_SELECTOR, PRODUCT_ROW_SELECTOR)
                 current_product = products[i]
 
                 # force scroll for lazy loading
@@ -747,7 +971,9 @@ def run_selleramp_export_loop(
                     wait.until(EC.frame_to_be_available_and_switch_to_it((By.ID, "appFrame")))
                     time.sleep(scraper_config.timing.iframe_inner_wait_seconds)
                     
-                    export_button = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, EXPORT_BTN)))
+                    export_button = wait.until(
+                        EC.element_to_be_clickable((By.CSS_SELECTOR, EXPORT_BUTTON_SELECTOR))
+                    )
                     driver.execute_script("arguments[0].click();", export_button)
                     
                     print("     Verifying Google Sheets export...")
@@ -852,7 +1078,7 @@ def run_selleramp_export_loop(
             )
             print("\nLooking for the 'Next' page button...")
             try:
-                next_button = driver.find_element(By.CSS_SELECTOR, NEXT_PAGE_BTN)
+                next_button = driver.find_element(By.CSS_SELECTOR, NEXT_PAGE_BUTTON_SELECTOR)
                 if next_button.get_attribute("aria-disabled") == "true" or next_button.get_attribute("disabled"):
                     print(f"[COMPLETE] Reached the final page for '{keyword}'. No more results.")
                     log_event(
